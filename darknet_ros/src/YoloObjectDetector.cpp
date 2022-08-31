@@ -47,7 +47,7 @@ YoloObjectDetector::~YoloObjectDetector() {
 
 bool YoloObjectDetector::readParameters() {
   // Load common parameters.
-  nodeHandle_.param("image_view/enable_opencv", viewImage_, true);
+  nodeHandle_.param("image_view/enable_opencv", viewImage_, false);
   nodeHandle_.param("image_view/wait_key_delay", waitKeyDelay_, 3);
   nodeHandle_.param("image_view/enable_console_output", enableConsoleOutput_, false);
 
@@ -164,6 +164,7 @@ void YoloObjectDetector::cameraCallback(const sensor_msgs::ImageConstPtr& msg) {
   try {
     if (msg->encoding == "mono8" || msg->encoding == "bgr8" || msg->encoding == "rgb8") {
       cam_image = cv_bridge::toCvCopy(msg, msg->encoding);
+//      cam_image = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::RGB8);
     } else if ( msg->encoding == "bgra8") {
       cam_image = cv_bridge::toCvCopy(msg, "bgr8");
     } else if ( msg->encoding == "rgba8") {
@@ -205,6 +206,7 @@ void YoloObjectDetector::checkForObjectsActionGoalCB() {
 
   try {
     cam_image = cv_bridge::toCvCopy(imageAction, sensor_msgs::image_encodings::BGR8);
+//    cam_image = cv_bridge::toCvCopy(imageAction, sensor_msgs::image_encodings::RGB8);
   } catch (cv_bridge::Exception& e) {
     ROS_ERROR("cv_bridge exception: %s", e.what());
     return;
@@ -243,7 +245,8 @@ bool YoloObjectDetector::publishDetectionImage(const cv::Mat& detectionImage) {
   cv_bridge::CvImage cvImage;
   cvImage.header.stamp = ros::Time::now();
   cvImage.header.frame_id = "detection_image";
-  cvImage.encoding = sensor_msgs::image_encodings::BGR8;
+//  cvImage.encoding = sensor_msgs::image_encodings::BGR8;
+  cvImage.encoding = sensor_msgs::image_encodings::RGB8;
   cvImage.image = detectionImage;
   detectionImagePublisher_.publish(*cvImage.toImageMsg());
   ROS_DEBUG("Detection image has been published.");
@@ -502,6 +505,7 @@ void YoloObjectDetector::yolo() {
       demoTime_ = what_time_is_it_now();
       if (viewImage_) {
         displayInThread(0);
+        generate_image(buff_[(buffIndex_ + 1) % 3], disp_);
       } else {
         generate_image(buff_[(buffIndex_ + 1) % 3], disp_);
       }
