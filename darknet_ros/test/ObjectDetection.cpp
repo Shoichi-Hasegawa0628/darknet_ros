@@ -27,8 +27,15 @@
 // Actions.
 #include <darknet_ros_msgs/CheckForObjectsAction.h>
 
+// Added
+#include <darknet_ros_msgs/AllDetectionDataAction.h>
+
 using CheckForObjectsActionClient = actionlib::SimpleActionClient<darknet_ros_msgs::CheckForObjectsAction>;
 using CheckForObjectsActionClientPtr = std::shared_ptr<CheckForObjectsActionClient>;
+
+// Added
+using AllDetectionDataActionClient = actionlib::SimpleActionClient<darknet_ros_msgs::AllDetectionDataAction>;
+using AllDetectionDataActionClientPtr = std::shared_ptr<AllDetectionDataActionClient>;
 
 // c++
 #include <cmath>
@@ -41,6 +48,7 @@ std::string darknetFilePath_ = DARKNET_FILE_PATH;
 #endif
 
 darknet_ros_msgs::BoundingBoxes boundingBoxesResults_;
+sensor_msgs::Image detectionImageResults_;
 
 /*!
  * Done-callback for CheckForObjects action client.
@@ -51,6 +59,15 @@ void checkForObjectsResultCB(const actionlib::SimpleClientGoalState& state, cons
   std::cout << "[ObjectDetectionTest] Received bounding boxes." << std::endl;
 
   boundingBoxesResults_ = result->bounding_boxes;
+}
+
+
+// Added
+void allDetectionDataResultCB(const actionlib::SimpleClientGoalState& state, const darknet_ros_msgs::AllDetectionDataResultConstPtr& result) {
+  std::cout << "[ObjectDetectionTest] Received bounding boxes." << std::endl;
+
+  boundingBoxesResults_ = result->bounding_boxes;
+  detectionImageResults_ = result->detection_image;
 }
 
 bool sendImageToYolo(ros::NodeHandle nh, const std::string& pathToTestImage) {
@@ -92,6 +109,49 @@ bool sendImageToYolo(ros::NodeHandle nh, const std::string& pathToTestImage) {
   std::cout << "[ObjectDetectionTest] Object detection for one image took " << endYolo - beginYolo << " seconds." << std::endl;
   return true;
 }
+
+
+// Added
+bool sendImageToYolo(ros::NodeHandle nh, const std::string& pathToTestImage) {
+  //! Check for objects action client.
+  AllDetectionDataActionClientPtr allDetectionDataActionClient;
+
+  // Action clients.
+  std::string allDetectionDataActionName;
+  nh.param("/darknet_ros/data_action", allDetectionDataActionName, std::string("/darknet_ros/all_detection_data"));
+  allDetectionDataActionClient.reset(new AllDetectionDataActionClient(nh, allDetectionDataActionName, true));
+
+  // Wait till action server launches.
+  if (!allDetectionDataActionClient->waitForServer(ros::Duration(20.0))) {
+    std::cout << "[ObjectDetectionTest] sendImageToYolo(): allDetectionData action server has not been advertised." << std::endl;
+    return false;
+  }
+
+  // Get test image
+  cv_bridge::CvImagePtr cv_ptr(new cv_bridge::CvImage);
+  cv_ptr->image = cv::imread(pathToTestImage, cv::IMREAD_COLOR);
+  cv_ptr->encoding = sensor_msgs::image_encodings::RGB8;
+  sensor_msgs::ImagePtr image = cv_ptr->toImageMsg();
+
+  // Generate goal.
+  darknet_ros_msgs::AllDetectionDataGoal goal;
+  goal.image = *image;
+
+  // Send goal.
+  ros::Time beginYolo = ros::Time::now();
+  allDetectionDataActionClient->sendGoal(goal, boost::bind(&allDetectionDataResultCB, _1, _2),
+                                        AllDetectionDataActionClient::SimpleActiveCallback(),
+                                        AllDetectionDataActionClient::SimpleFeedbackCallback());
+
+  if (!allDetectionDataActionClient->waitForResult(ros::Duration(100.0))) {
+    std::cout << "[ObjectDetectionTest] sendImageToYolo(): allDetectionData action server took to long to send back result." << std::endl;
+    return false;
+  }
+  ros::Time endYolo = ros::Time::now();
+  std::cout << "[ObjectDetectionTest] Object detection for one image took " << endYolo - beginYolo << " seconds." << std::endl;
+  return true;
+}
+
 
 TEST(ObjectDetection, DISABLED_DetectDog) {
   srand(static_cast<unsigned int>(time(nullptr)));

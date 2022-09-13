@@ -38,6 +38,10 @@
 #include <darknet_ros_msgs/CheckForObjectsAction.h>
 #include <darknet_ros_msgs/ObjectCount.h>
 
+// Added
+#include <darknet_ros_msgs/AllDetectionDataAction.h>
+
+
 // Darknet.
 #ifdef GPU
 #include "cublas_v2.h"
@@ -111,16 +115,26 @@ class YoloObjectDetector {
    */
   void checkForObjectsActionGoalCB();
 
+  // Added
+  void allDetectionDataActionGoalCB();
+
   /*!
    * Check for objects action preempt callback.
    */
   void checkForObjectsActionPreemptCB();
+
+  // Added
+  void allDetectionDataActionPreemptCB();
+
 
   /*!
    * Check if a preempt for the check for objects action has been requested.
    * @return false if preempt has been requested or inactive.
    */
   bool isCheckingForObjects() const;
+
+  // Added
+  bool isAllDetectionData() const;
 
   /*!
    * Publishes the detection image.
@@ -132,6 +146,11 @@ class YoloObjectDetector {
   using CheckForObjectsActionServer = actionlib::SimpleActionServer<darknet_ros_msgs::CheckForObjectsAction>;
   using CheckForObjectsActionServerPtr = std::shared_ptr<CheckForObjectsActionServer>;
 
+  // Added
+  using AllDetectionDataActionServer = actionlib::SimpleActionServer<darknet_ros_msgs::AllDetectionDataAction>;
+  using AllDetectionDataActionServerPtr = std::shared_ptr<AllDetectionDataActionServer>;
+
+
   //! ROS node handle.
   ros::NodeHandle nodeHandle_;
 
@@ -141,6 +160,10 @@ class YoloObjectDetector {
 
   //! Check for objects action server.
   CheckForObjectsActionServerPtr checkForObjectsActionServer_;
+
+  // Added
+  AllDetectionDataActionServerPtr allDetectionDataActionServer_;
+
 
   //! Advertise and subscribe to image topics.
   image_transport::ImageTransport imageTransport_;
@@ -154,6 +177,9 @@ class YoloObjectDetector {
   std::vector<std::vector<RosBox_> > rosBoxes_;
   std::vector<int> rosBoxCounter_;
   darknet_ros_msgs::BoundingBoxes boundingBoxesResults_;
+
+  // Added
+  sensor_msgs::Image detectionImageResults_;
 
   //! Camera related parameters.
   int frameWidth_;

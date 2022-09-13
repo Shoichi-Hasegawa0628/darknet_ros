@@ -154,6 +154,15 @@ void YoloObjectDetector::init() {
   checkForObjectsActionServer_->registerGoalCallback(boost::bind(&YoloObjectDetector::checkForObjectsActionGoalCB, this));
   checkForObjectsActionServer_->registerPreemptCallback(boost::bind(&YoloObjectDetector::checkForObjectsActionPreemptCB, this));
   checkForObjectsActionServer_->start();
+
+  // Added Action server
+  std::string allDetectionDataActionName;
+  nodeHandle_.param("actions/data_reading/topic", allDetectionDataActionName, std::string("all_detection_data"));
+  allDetectionDataActionServer_.reset(new AllDetectionDataActionServer(nodeHandle_, allDetectionDataActionName, false));
+  allDetectionDataActionServer_->registerGoalCallback(boost::bind(&YoloObjectDetector::allDetectionDataActionGoalCB, this));
+  allDetectionDataActionServer_->registerPreemptCallback(boost::bind(&YoloObjectDetector::allDetectionDataActionPreemptCB, this));
+  allDetectionDataActionServer_->start();
+
 }
 
 void YoloObjectDetector::cameraCallback(const sensor_msgs::ImageConstPtr& msg) {
@@ -231,14 +240,70 @@ void YoloObjectDetector::checkForObjectsActionGoalCB() {
   return;
 }
 
+
+// Added
+void YoloObjectDetector::allDetectionDataActionGoalCB() {
+  ROS_DEBUG("[YoloObjectDetector] Start check for objects action.");
+
+  boost::shared_ptr<const darknet_ros_msgs::AllDetectionDataGoal> imageActionPtr = allDetectionDataActionServer_->acceptNewGoal();
+  sensor_msgs::Image imageAction = imageActionPtr->image;
+
+  cv_bridge::CvImagePtr cam_image;
+
+  try {
+    cam_image = cv_bridge::toCvCopy(imageAction, sensor_msgs::image_encodings::BGR8);
+//    cam_image = cv_bridge::toCvCopy(imageAction, sensor_msgs::image_encodings::RGB8);
+  } catch (cv_bridge::Exception& e) {
+    ROS_ERROR("cv_bridge exception: %s", e.what());
+    return;
+  }
+
+  if (cam_image) {
+    {
+      boost::unique_lock<boost::shared_mutex> lockImageCallback(mutexImageCallback_);
+      camImageCopy_ = cam_image->image.clone();
+    }
+    {
+      boost::unique_lock<boost::shared_mutex> lockImageCallback(mutexActionStatus_);
+      actionId_ = imageActionPtr->id;
+    }
+    {
+      boost::unique_lock<boost::shared_mutex> lockImageStatus(mutexImageStatus_);
+      imageStatus_ = true;
+    }
+    frameWidth_ = cam_image->image.size().width;
+    frameHeight_ = cam_image->image.size().height;
+  }
+  return;
+}
+
+
+
+
+
+
+
 void YoloObjectDetector::checkForObjectsActionPreemptCB() {
   ROS_DEBUG("[YoloObjectDetector] Preempt check for objects action.");
   checkForObjectsActionServer_->setPreempted();
 }
 
+// Added
+void YoloObjectDetector::allDetectionDataActionPreemptCB() {
+  ROS_DEBUG("[YoloObjectDetector] Preempt check for objects action.");
+  allDetectionDataActionServer_->setPreempted();
+}
+
+
 bool YoloObjectDetector::isCheckingForObjects() const {
   return (ros::ok() && checkForObjectsActionServer_->isActive() && !checkForObjectsActionServer_->isPreemptRequested());
 }
+
+// Added
+bool YoloObjectDetector::isAllDetectionData() const {
+  return (ros::ok() && allDetectionDataActionServer_->isActive() && !allDetectionDataActionServer_->isPreemptRequested());
+}
+
 
 bool YoloObjectDetector::publishDetectionImage(const cv::Mat& detectionImage) {
   if (detectionImagePublisher_.getNumSubscribers() < 1) return false;
@@ -542,9 +607,20 @@ bool YoloObjectDetector::isNodeRunning(void) {
 void* YoloObjectDetector::publishInThread() {
   // Publish image.
   cv::Mat cvImage = disp_;
+
+  // Added
+  cv_bridge::CvImage detectionImage;
+  detectionImageResults_.header.stamp = ros::Time::now();
+  detectionImageResults_.header.frame_id = "detection_image";
+  detectionImageResults_.encoding = sensor_msgs::image_encodings::RGB8;
+  detectionImageResults_.data = cvImage;
+//  detectionImagePublisher_.publish(detectionImageResults_);
+
+
   if (!publishDetectionImage(cv::Mat(cvImage))) {
     ROS_DEBUG("Detection image has not been broadcasted.");
   }
+
 
   // Publish bounding boxes and detection result.
   int num = roiBoxes_[0].num;
@@ -589,6 +665,7 @@ void* YoloObjectDetector::publishInThread() {
     boundingBoxesResults_.header.frame_id = "detection";
     boundingBoxesResults_.image_header = headerBuff_[(buffIndex_ + 1) % 3];
     boundingBoxesPublisher_.publish(boundingBoxesResults_);
+
   } else {
     darknet_ros_msgs::ObjectCount msg;
     msg.header.stamp = ros::Time::now();
@@ -603,6 +680,17 @@ void* YoloObjectDetector::publishInThread() {
     objectsActionResult.bounding_boxes = boundingBoxesResults_;
     checkForObjectsActionServer_->setSucceeded(objectsActionResult, "Send bounding boxes.");
   }
+
+  // Added
+  if (isAllDetectionData()) {
+    ROS_DEBUG("[YoloObjectDetector] check for objects in image.");
+    darknet_ros_msgs::AllDetectionDataResult dataActionResult;
+    dataActionResult.id = buffId_[0];
+    dataActionResult.bounding_boxes = boundingBoxesResults_;
+    dataActionResult.detection_image = detectionImageResults_;
+    allDetectionDataActionServer_->setSucceeded(dataActionResult, "Send bounding boxes.");
+  }
+
   boundingBoxesResults_.bounding_boxes.clear();
   for (int i = 0; i < numClasses_; i++) {
     rosBoxes_[i].clear();

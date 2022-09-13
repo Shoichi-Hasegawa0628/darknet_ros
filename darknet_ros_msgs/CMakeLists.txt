@@ -23,6 +23,7 @@ add_message_files(
 add_action_files(
   FILES
     CheckForObjects.action
+    AllDetectionData.action
 )
 
 generate_messages(
